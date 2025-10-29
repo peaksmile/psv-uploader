@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PSV Uploader</title>
+<style>
+  :root{
+    /* TUNE these to match IS proportions */
+    --overlay-scale-desktop: .86;   /* try .80 – .92 */
+    --overlay-scale-mobile:  .90;
+    --dialog-max-w: 740px;          /* desktop camera width */
+    --dialog-max-h: 86vh;           /* keep within viewport */
+  }
+
+  body{font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;color:#111}
+  .wrap{max-width:900px;margin:0 auto;padding:24px;text-align:center}
+  h1{font-size:clamp(1.6rem,2vw,2.2rem);margin:.2rem 0}
+  p.lead{color:#666;margin:.2rem 0 1.2rem}
+
+  input{padding:10px;border-radius:8px;border:1px solid #ddd;width:260px;max-width:90%}
+  .btn{appearance:none;border:0;border-radius:999px;padding:12px 18px;font-weight:700;cursor:pointer}
+  .btn.primary{background:#111;color:#fff}
+  .btn.ghost{background:#f2f2f2}
+
+  /* ----- Modal (desktop + mobile) ----- */
+  /* Backdrop should allow the card to scroll inside on mobile */
+.backdrop{
+  position:fixed; inset:0; background:rgba(0,0,0,.55);
+  display:none; align-items:flex-start; justify-content:center;  /* was center */
+  z-index:9999;
+  overflow:auto;                                /* allow scroll if card is tall */
+  padding: max(16px, env(safe-area-inset-top)) 16px 16px; /* iOS notch safe area */
+}
+
+/* The card itself becomes a scroll container */
+.dialog{
+  background:#fff; border-radius:14px; width:100%;
+  max-width:var(--dialog-max-w);
+  max-height: min(92svh, 92dvh);                 /* better than vh on iOS */
+  box-shadow:0 20px 60px rgba(0,0,0,.35);
+  overflow:auto;                                  /* <-- key */
+  -webkit-overflow-scrolling: touch;              /* smooth iOS scrolling */
+  display:flex; flex-direction:column;
+}
+
+/* Camera/review stage shouldn’t blow past the screen */
+.stage{
+  position:relative; width:100%; aspect-ratio: 4 / 3; background:#000;
+  max-height: 60svh;                               /* guardrail on mobile */
+}
+video#cam{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+img#overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; opacity:.5; transform-origin:center bottom; }
+
+/* Keep the action bar visible; allow the rest to scroll under it */
+.bar{
+  display:flex; gap:12px; justify-content:center; padding:14px;
+  border-top:1px solid #eee; flex-wrap:wrap;
+  position: sticky; bottom: 0; background:#fff;   /* <-- stays visible */
+}
+  .chip{display:inline-flex;align-items:center;gap:8px;background:#f5f5f5;border-radius:999px;padding:8px 12px;margin:6px 4px;font-size:.9rem}
+  .chip .x{margin-left:6px;cursor:pointer;opacity:.6}
+
+  /* Review panel */
+  .review{padding:0 16px 16px; overflow:auto}
+  .checks{display:flex;gap:10px;flex-direction:column;align-items:flex-start;color:#333;margin:10px 0}
+  .checks span::before{content:"✔";display:inline-block;margin-right:8px;color:#08a66c;font-weight:900}
+  .review-img{width:100%;border-radius:10px;border:1px solid #eee}
+
+  @media (max-width: 640px){
+    .dialog{max-width:92vw;}
+    .stage{aspect-ratio: 3 / 4;} /* feels closer to their phone view */
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Upload Your Impressions</h1>
+    <p class="lead">Fill in details, then take photos with overlay.</p>
+
+    <form id="f" novalidate>
+      <input name="order" placeholder="Order Number (e.g., PSV1028)" required><br><br>
+      <input name="email" type="email" placeholder="Email" required><br><br>
+      <button type="button" id="open" class="btn ghost">Start Camera</button>
+    </form>
+
+    <div id="uploads"></div>
+  </div>
+
+  <!-- Capture Modal -->
+  <div id="backdrop" class="backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="dialog">
+      <header><span id="modalTitle">Bottom</span> <button id="close" class="btn ghost">×</button></header>
+      <div class="hint">Line up the handle accurately to make sure you get the correct angle. You can then take a photo.</div>
+
+      <div class="stage" id="captureStage">
+        <video id="cam" autoplay playsinline muted></video>
+        <img id="overlay" src="Impression_Tray.png" alt="Tray overlay">
+      </div>
+
+      <div class="bar" id="captureBar">
+        <button id="flash" class="btn ghost">Flash: Auto</button>
+        <button id="snap" class="btn primary">Take Photo</button>
+      </div>
+
+      <!-- Review state (hidden until a shot is taken) -->
+      <div id="review" style="display:none">
+        <div class="hint" style="padding-top:12px;text-align:center;font-weight:600">Is your photo:</div>
+        <div class="review">
+          <div class="checks">
+            <span>Well lit</span>
+            <span>Clear</span>
+            <span>At the correct angle</span>
+          </div>
+          <img id="reviewImg" class="review-img" alt="Preview">
+        </div>
+        <div class="bar">
+          <button id="retake" class="btn" style="background:#f64b4b;color:#fff">No, retake</button>
+          <button id="confirm" class="btn" style="background:#10b983;color:#fff">Yes, continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="hiddenCanvas" style="display:none"></canvas>
+
+<script>
+  // ==== CONFIG ==============================================================
+  // Azure Function that returns a SharePoint upload session (Anonymous)
+  const FUNCTION_URL =
+    "https://psv-uploader-function-dwdaeyhrakb3a8d0.centralus-01.azurewebsites.net/api/create-upload-session";
+
+  // ==== ELEMENTS ============================================================
+  const openBtn  = document.getElementById('open');
+  const closeBtn = document.getElementById('close');
+  const flashBtn = document.getElementById('flash');
+  const snapBtn  = document.getElementById('snap');
+  const retakeBtn= document.getElementById('retake');
+  const confirmBtn=document.getElementById('confirm');
+
+  const backdrop = document.getElementById('backdrop');
+  const video    = document.getElementById('cam');
+  const overlay  = document.getElementById('overlay');
+  const canvas   = document.getElementById('hiddenCanvas');
+  const uploads  = document.getElementById('uploads');
+  const review   = document.getElementById('review');
+  const reviewImg= document.getElementById('reviewImg');
+  const captureStage = document.getElementById('captureStage');
+  const captureBar   = document.getElementById('captureBar');
+
+  let stream=null, photoBlob=null, meta=null, fileIndex=1, torchMode='auto';
+
+  function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+  function applyOverlayScale(){
+    const s = getComputedStyle(document.documentElement)
+      .getPropertyValue(isMobile() ? '--overlay-scale-mobile' : '--overlay-scale-desktop');
+    overlay.style.transform = `scale(${parseFloat(s || 1)})`;
+  }
+  window.addEventListener('resize', applyOverlayScale);
+
+  function sanitizeOrder(v){ v=(v||'').toString().trim().toUpperCase(); return v; }
+
+  // ---- filename + SharePoint upload helpers ----
+  function buildFileName(order, index){
+    const ts  = new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
+    const idx = String(index).padStart(2,'0');
+    return `PSV_${order || 'UNKNOWN'}_${ts}_${idx}.jpg`;
+  }
+
+  async function createUploadSession(order, filename){
+    const u = new URL(FUNCTION_URL);
+    u.searchParams.set("order", order);
+    u.searchParams.set("filename", filename);
+    const r = await fetch(u.toString(), { method: "POST" });
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok || !j.uploadUrl) throw new Error(`Create session failed (${r.status})`);
+    return j.uploadUrl;
+  }
+
+  async function uploadWhole(uploadUrl, blob){
+    const r = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Range": `bytes 0-${blob.size-1}/${blob.size}` },
+      body: blob
+    });
+    if (!(r.ok || r.status === 201)) throw new Error(`PUT failed ${r.status}`);
+    return true;
+  }
+
+  // ==== CAMERA ==============================================================
+  async function startCam(){
+    try{
+      const base = { facingMode: { exact: "environment" } };
+      const constraints = { video: base, audio:false };
+      stream = await navigator.mediaDevices.getUserMedia(constraints).catch(async () =>
+        await navigator.mediaDevices.getUserMedia({ video:true, audio:false })
+      );
+      video.srcObject = stream;
+
+      const track = stream.getVideoTracks()[0];
+      if (!track) return;
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (caps.torch) {
+        try {
+          await track.applyConstraints({ advanced:[{ torch: true }] });
+          torchMode = 'on';
+          flashBtn.textContent = 'Flash: On';
+        } catch { torchMode = 'off'; flashBtn.textContent = 'Flash: Off'; }
+      } else {
+        flashBtn.textContent = 'Flash: Auto';
+      }
+    } catch(e){
+      alert('Camera error: ' + e.message);
+    }
+  }
+
+  openBtn.addEventListener('click', async ()=>{
+    const f = document.getElementById('f');
+    if(!f.reportValidity()) return;
+    const fd = new FormData(f);
+    meta = { order: sanitizeOrder(fd.get('order')), email: (fd.get('email')||'').toString().trim() };
+    backdrop.style.display = 'flex';
+    applyOverlayScale();
+    await startCam();
+    showCapture();
+  });
+
+  closeBtn.addEventListener('click', ()=> hideModal());
+
+  function showCapture(){
+    review.style.display='none';
+    captureStage.style.display='block';
+    captureBar.style.display='flex';
+  }
+  function showReview(){
+    captureStage.style.display='none';
+    captureBar.style.display='none';
+    review.style.display='block';
+    // scroll the confirm buttons into view
+    document.querySelector('.bar:last-of-type')?.scrollIntoView({ block:'end', behavior:'smooth' });
+  }
+  function hideModal(){
+    backdrop.style.display='none';
+    if(video.srcObject){ video.srcObject.getTracks().forEach(t=>t.stop()); }
+    photoBlob=null;
+  }
+
+  flashBtn.addEventListener('click', async ()=>{
+    if(!stream) return;
+    const track = stream.getVideoTracks()[0];
+    if(!track || !track.getCapabilities) return;
+    const caps = track.getCapabilities();
+    if(!caps.torch) { alert('Flash control not supported on this device'); return; }
+    try{
+      const turnOn = torchMode !== 'on';
+      await track.applyConstraints({ advanced:[{ torch: turnOn }] });
+      torchMode = turnOn ? 'on' : 'off';
+      flashBtn.textContent = 'Flash: ' + (turnOn ? 'On' : 'Off');
+    }catch(e){ alert('Flash error: '+e.message); }
+  });
+
+  snapBtn.addEventListener('click', ()=>{
+    if(!video.videoWidth) return;
+    const maxW = 1600;
+    const scale = Math.min(1, maxW / video.videoWidth);
+    canvas.width  = Math.round(video.videoWidth  * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(b => {
+      photoBlob = b;
+      reviewImg.src = URL.createObjectURL(b);
+      showReview();
+    }, 'image/jpeg', 0.9);
+  });
+
+  retakeBtn.addEventListener('click', ()=>{
+    photoBlob=null;
+    showCapture();
+  });
+
+  // ==== NEW: upload to SharePoint via your Function ====
+  confirmBtn.addEventListener('click', async ()=>{
+  try{
+    if(!photoBlob) throw new Error('No photo captured');
+
+    const order = (meta?.order || 'UNKNOWN').toUpperCase();
+    const filename = buildFileName(order, fileIndex++); // PSV_<ORDER>_YYYYMMDDHHMMSS_01.jpg
+
+    // convert Blob -> base64 (chunked to avoid call stack issues)
+    async function blobToBase64(blob){
+      const ab = await blob.arrayBuffer();
+      let binary = '';
+      const bytes = new Uint8Array(ab);
+      const chunk = 0x8000;
+      for(let i=0;i<bytes.length;i+=chunk){
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
+      }
+      return btoa(binary);
+    }
+    const fileB64 = await blobToBase64(photoBlob);
+
+    const r = await fetch(FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order, filename, fileB64, contentType: 'image/jpeg' })
+    });
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+
+    hideModal();
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.textContent = `✅ Uploaded as ${filename}`;
+    const x=document.createElement('span'); x.textContent=' ×'; x.className='x'; x.onclick=()=>chip.remove();
+    chip.appendChild(x); uploads.appendChild(chip);
+  }catch(err){
+    alert('Upload error: ' + err.message);
+    showCapture();
+  }
+});
+
+  // Initial scale
+  applyOverlayScale();
+</script>
+</body>
+</html>
