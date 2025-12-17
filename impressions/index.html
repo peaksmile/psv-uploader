@@ -261,7 +261,7 @@ img#overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:con
 
   snapBtn.addEventListener('click', ()=>{
     if(!video.videoWidth) return;
-    const maxW = 1600;
+    const maxW = 2400;
     const scale = Math.min(1, maxW / video.videoWidth);
     canvas.width  = Math.round(video.videoWidth  * scale);
     canvas.height = Math.round(video.videoHeight * scale);
