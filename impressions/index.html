@@ -6,117 +6,177 @@
 <title>PSV Uploader</title>
 <style>
   :root{
-    /* TUNE these to match IS proportions */
-    --overlay-scale-desktop: .86;   /* try .80 – .92 */
-    --overlay-scale-mobile:  .90;
-    --dialog-max-w: 740px;          /* desktop camera width */
-    --dialog-max-h: 86vh;           /* keep within viewport */
+    --overlay-scale-desktop:.86;
+    --overlay-scale-mobile:.90;
+    --dialog-max-w: 740px;
   }
 
-  body{font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;color:#111}
-  .wrap{max-width:900px;margin:0 auto;padding:24px;text-align:center}
+  body{font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;color:#111;background:#fff}
+  .wrap{max-width:920px;margin:0 auto;padding:22px;text-align:center}
   h1{font-size:clamp(1.6rem,2vw,2.2rem);margin:.2rem 0}
   p.lead{color:#666;margin:.2rem 0 1.2rem}
 
-  input{padding:10px;border-radius:8px;border:1px solid #ddd;width:260px;max-width:90%}
-  .btn{appearance:none;border:0;border-radius:999px;padding:12px 18px;font-weight:700;cursor:pointer}
+  .card{max-width:720px;margin:0 auto;border:1px solid #eee;border-radius:16px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.05);text-align:left}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:720px){ .grid{grid-template-columns:1fr} }
+
+  label{display:block;font-size:.9rem;color:#444;margin:2px 0 6px}
+  input, select{
+    width:100%; padding:12px; border-radius:10px; border:1px solid #ddd; font-size:1rem;
+    background:#fff;
+  }
+
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-start}
+  .btn{appearance:none;border:0;border-radius:999px;padding:12px 16px;font-weight:700;cursor:pointer}
   .btn.primary{background:#111;color:#fff}
   .btn.ghost{background:#f2f2f2}
+  .btn.warn{background:#ffefc2}
+  .btn.danger{background:#f64b4b;color:#fff}
+  .btn.green{background:#10b983;color:#fff}
+  .muted{color:#666;font-size:.92rem}
 
-  /* ----- Modal (desktop + mobile) ----- */
-  /* Backdrop should allow the card to scroll inside on mobile */
-.backdrop{
-  position:fixed; inset:0; background:rgba(0,0,0,.55);
-  display:none; align-items:flex-start; justify-content:center;  /* was center */
-  z-index:9999;
-  overflow:auto;                                /* allow scroll if card is tall */
-  padding: max(16px, env(safe-area-inset-top)) 16px 16px; /* iOS notch safe area */
-}
+  /* Modal */
+  .backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,.55);
+    display:none; align-items:flex-start; justify-content:center;
+    z-index:9999;
+    overflow:auto;
+    padding: max(16px, env(safe-area-inset-top)) 16px 16px;
+  }
+  .dialog{
+    background:#fff; border-radius:14px; width:100%;
+    max-width:var(--dialog-max-w);
+    max-height: min(92svh, 92dvh);
+    box-shadow:0 20px 60px rgba(0,0,0,.35);
+    overflow:auto;
+    -webkit-overflow-scrolling: touch;
+    display:flex; flex-direction:column;
+  }
+  .dialog header{
+    padding:12px 16px; font-weight:800; border-bottom:1px solid #eee;
+    display:flex;justify-content:space-between;align-items:center
+  }
+  .hint{padding:8px 16px 12px; color:#555; font-size:.95rem}
+  .stage{position:relative; width:100%; aspect-ratio:4/3; background:#000; max-height:60svh}
+  video#cam{position:absolute; inset:0; width:100%; height:100%; object-fit:cover}
+  img#overlay{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; opacity:.55; transform-origin:center bottom; display:none;}
+  .bar{
+    display:flex; gap:12px; justify-content:center; padding:14px;
+    border-top:1px solid #eee; flex-wrap:wrap;
+    position: sticky; bottom: 0; background:#fff;
+  }
 
-/* The card itself becomes a scroll container */
-.dialog{
-  background:#fff; border-radius:14px; width:100%;
-  max-width:var(--dialog-max-w);
-  max-height: min(92svh, 92dvh);                 /* better than vh on iOS */
-  box-shadow:0 20px 60px rgba(0,0,0,.35);
-  overflow:auto;                                  /* <-- key */
-  -webkit-overflow-scrolling: touch;              /* smooth iOS scrolling */
-  display:flex; flex-direction:column;
-}
-
-/* Camera/review stage shouldn’t blow past the screen */
-.stage{
-  position:relative; width:100%; aspect-ratio: 4 / 3; background:#000;
-  max-height: 60svh;                               /* guardrail on mobile */
-}
-video#cam{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
-img#overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; opacity:.5; transform-origin:center bottom; }
-
-/* Keep the action bar visible; allow the rest to scroll under it */
-.bar{
-  display:flex; gap:12px; justify-content:center; padding:14px;
-  border-top:1px solid #eee; flex-wrap:wrap;
-  position: sticky; bottom: 0; background:#fff;   /* <-- stays visible */
-}
-  .chip{display:inline-flex;align-items:center;gap:8px;background:#f5f5f5;border-radius:999px;padding:8px 12px;margin:6px 4px;font-size:.9rem}
+  .chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .chip{
+    display:inline-flex;align-items:center;gap:8px;background:#f5f5f5;border-radius:999px;
+    padding:8px 12px;font-size:.92rem
+  }
   .chip .x{margin-left:6px;cursor:pointer;opacity:.6}
 
-  /* Review panel */
-  .review{padding:0 16px 16px; overflow:auto}
-  .checks{display:flex;gap:10px;flex-direction:column;align-items:flex-start;color:#333;margin:10px 0}
-  .checks span::before{content:"✔";display:inline-block;margin-right:8px;color:#08a66c;font-weight:900}
-  .review-img{width:100%;border-radius:10px;border:1px solid #eee}
-
-  @media (max-width: 640px){
-    .dialog{max-width:92vw;}
-    .stage{aspect-ratio: 3 / 4;} /* feels closer to their phone view */
-  }
+  .sectionTitle{font-weight:800;margin:12px 0 8px}
+  .hr{height:1px;background:#eee;margin:14px 0}
+  .status{margin-top:10px;font-weight:700}
+  .status.ok{color:#10b983}
+  .status.bad{color:#f64b4b}
 </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Upload Your Impressions</h1>
-    <p class="lead">Fill in details, then take photos with overlay.</p>
+    <h1>Upload Your Photos</h1>
+    <p class="lead">Verify your order, then upload impression and (optional) teeth photos.</p>
 
-    <form id="f" novalidate>
-      <input name="order" placeholder="Order Number (e.g., PSV1028)" required><br><br>
-      <input name="email" type="email" placeholder="Email" required><br><br>
-      <button type="button" id="open" class="btn ghost">Start Camera</button>
-    </form>
+    <div class="card">
+      <div class="grid">
+        <div>
+          <label>First name *</label>
+          <input id="firstName" autocomplete="given-name" required>
+        </div>
+        <div>
+          <label>Last name *</label>
+          <input id="lastName" autocomplete="family-name" required>
+        </div>
+        <div>
+          <label>Email on order *</label>
+          <input id="email" type="email" autocomplete="email" required>
+        </div>
+        <div>
+          <label>Order # (optional)</label>
+          <input id="orderNumber" placeholder="#PSV1100">
+          <div class="muted" style="margin-top:6px">If you have multiple orders, we’ll ask for this.</div>
+        </div>
+        <div>
+          <label>Impression attempt # *</label>
+          <select id="attemptNumber" required>
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+            <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option>
+          </select>
+        </div>
+        <div>
+          <label>Product type *</label>
+          <select id="productType" required>
+            <option>Top</option>
+            <option>Bottom</option>
+            <option>Top & Bottom</option>
+          </select>
+        </div>
+      </div>
 
-    <div id="uploads"></div>
+      <div class="hr"></div>
+
+      <div class="sectionTitle">1) Impression photos (required: at least 1)</div>
+      <div class="row">
+        <button class="btn ghost" id="addImpTop" type="button">Add Top impression</button>
+        <button class="btn ghost" id="addImpBottom" type="button">Add Bottom impression</button>
+      </div>
+      <div class="chips" id="impChips"></div>
+
+      <div class="sectionTitle" style="margin-top:16px">2) Teeth photos (optional)</div>
+      <div class="muted">Recommended for attempt #1. Use the front camera if available.</div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost" id="addTeeth" type="button">Add Teeth photo</button>
+      </div>
+      <div class="chips" id="teethChips"></div>
+
+      <div class="hr"></div>
+
+      <div class="row">
+        <button class="btn primary" id="submitAll" type="button">Submit All</button>
+        <button class="btn danger" id="clearAll" type="button">Clear</button>
+      </div>
+
+      <div id="status" class="status"></div>
+      <div class="muted" style="margin-top:8px">Tip: make sure photos are clear and well-lit.</div>
+    </div>
   </div>
 
   <!-- Capture Modal -->
-  <div id="backdrop" class="backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div id="backdrop" class="backdrop" role="dialog" aria-modal="true">
     <div class="dialog">
-      <header><span id="modalTitle">Bottom</span> <button id="close" class="btn ghost">×</button></header>
-      <div class="hint">Line up the handle accurately to make sure you get the correct angle. You can then take a photo.</div>
+      <header>
+        <span id="modalTitle">Capture</span>
+        <button id="close" class="btn ghost" type="button">×</button>
+      </header>
+      <div class="hint" id="modalHint">Line up and capture a clear photo.</div>
 
       <div class="stage" id="captureStage">
         <video id="cam" autoplay playsinline muted></video>
-        <img id="overlay" src="../Impression_Tray.png" alt="Tray overlay">
+        <img id="overlay" src="../Impression_Tray.png" alt="Overlay">
       </div>
 
       <div class="bar" id="captureBar">
-        <button id="flash" class="btn ghost">Flash: Auto</button>
-        <button id="snap" class="btn primary">Take Photo</button>
+        <button id="flash" class="btn ghost" type="button">Flash</button>
+        <button id="snap" class="btn primary" type="button">Take Photo</button>
       </div>
 
-      <!-- Review state (hidden until a shot is taken) -->
+      <!-- Review -->
       <div id="review" style="display:none">
-        <div class="hint" style="padding-top:12px;text-align:center;font-weight:600">Is your photo:</div>
-        <div class="review">
-          <div class="checks">
-            <span>Well lit</span>
-            <span>Clear</span>
-            <span>At the correct angle</span>
-          </div>
-          <img id="reviewImg" class="review-img" alt="Preview">
+        <div class="hint" style="text-align:center;font-weight:700">Looks good?</div>
+        <div style="padding:0 16px 16px">
+          <img id="reviewImg" style="width:100%;border-radius:12px;border:1px solid #eee" alt="Preview">
         </div>
         <div class="bar">
-          <button id="retake" class="btn" style="background:#f64b4b;color:#fff">No, retake</button>
-          <button id="confirm" class="btn" style="background:#10b983;color:#fff">Yes, continue</button>
+          <button id="retake" class="btn danger" type="button">Retake</button>
+          <button id="confirm" class="btn green" type="button">Use Photo</button>
         </div>
       </div>
     </div>
@@ -125,203 +185,314 @@ img#overlay{ position:absolute; inset:0; width:100%; height:100%; object-fit:con
   <canvas id="hiddenCanvas" style="display:none"></canvas>
 
 <script>
-  // ==== CONFIG ==============================================================
-  // Azure Function that returns a SharePoint upload session (Anonymous)
-  const FUNCTION_URL =
-    "https://psv-uploader-function-dwdaeyhrakb3a8d0.centralus-01.azurewebsites.net/api/create-upload-session";
+  // ================= CONFIG =================
+  const SUBMIT_URL = "https://psv-uploader-function-dwdaeyhrakb3a8d0.centralus-01.azurewebsites.net/api/submit-psv-upload-v2";
 
-  // ==== ELEMENTS ============================================================
-  const openBtn  = document.getElementById('open');
-  const closeBtn = document.getElementById('close');
-  const flashBtn = document.getElementById('flash');
-  const snapBtn  = document.getElementById('snap');
-  const retakeBtn= document.getElementById('retake');
-  const confirmBtn=document.getElementById('confirm');
+  // Resize config (keeps payloads sane)
+  const MAX_W = 2400;     // good for iPhone photos
+  const JPEG_QUALITY = 0.88;
 
-  const backdrop = document.getElementById('backdrop');
-  const video    = document.getElementById('cam');
-  const overlay  = document.getElementById('overlay');
-  const canvas   = document.getElementById('hiddenCanvas');
-  const uploads  = document.getElementById('uploads');
-  const review   = document.getElementById('review');
-  const reviewImg= document.getElementById('reviewImg');
-  const captureStage = document.getElementById('captureStage');
-  const captureBar   = document.getElementById('captureBar');
+  // ================= STATE ==================
+  const state = {
+    capture: { mode:null, side:null }, // mode: impression/teeth
+    photos: [] // { id, mode, side, blob, previewUrl }
+  };
 
-  let stream=null, photoBlob=null, meta=null, fileIndex=1, torchMode='auto';
+  // ================= ELEMENTS ===============
+  const $ = (id)=>document.getElementById(id);
+  const backdrop = $("backdrop");
+  const video = $("cam");
+  const overlay = $("overlay");
+  const canvas = $("hiddenCanvas");
 
-  function isMobile(){ return window.matchMedia('(max-width:640px)').matches; }
+  const modalTitle = $("modalTitle");
+  const modalHint  = $("modalHint");
+  const review = $("review");
+  const reviewImg = $("reviewImg");
+  const captureStage = $("captureStage");
+  const captureBar = $("captureBar");
+
+  const impChips = $("impChips");
+  const teethChips = $("teethChips");
+  const statusEl = $("status");
+
+  let stream = null;
+  let photoBlob = null;
+  let torchMode = "off";
+
+  function setStatus(msg, ok=true){
+    statusEl.textContent = msg;
+    statusEl.className = "status " + (ok ? "ok" : "bad");
+  }
+
+  function requiredMeta(){
+    const firstName = $("firstName").value.trim();
+    const lastName  = $("lastName").value.trim();
+    const email     = $("email").value.trim().toLowerCase();
+    const orderNumber = $("orderNumber").value.trim();
+    const attemptNumber = Number($("attemptNumber").value);
+    const productType = $("productType").value;
+
+    if(!firstName || !lastName || !email) return null;
+    return { firstName, lastName, email, orderNumber, attemptNumber, productType };
+  }
+
+  function showWarningIfNeeded(meta){
+    const teethCount = state.photos.filter(p=>p.mode==="teeth").length;
+    if(meta.attemptNumber === 1 && teethCount === 0){
+      return "Attempt #1: Teeth photos are recommended. You can still submit without them, but it may slow review.";
+    }
+    return null;
+  }
+
   function applyOverlayScale(){
+    const isMobile = window.matchMedia("(max-width:640px)").matches;
     const s = getComputedStyle(document.documentElement)
-      .getPropertyValue(isMobile() ? '--overlay-scale-mobile' : '--overlay-scale-desktop');
+      .getPropertyValue(isMobile ? "--overlay-scale-mobile" : "--overlay-scale-desktop");
     overlay.style.transform = `scale(${parseFloat(s || 1)})`;
   }
-  window.addEventListener('resize', applyOverlayScale);
+  window.addEventListener("resize", applyOverlayScale);
 
-  function sanitizeOrder(v){ v=(v||'').toString().trim().toUpperCase(); return v; }
+  function openModal({ mode, side }){
+    state.capture = { mode, side };
+    photoBlob = null;
 
-  // ---- filename + SharePoint upload helpers ----
-  function buildFileName(order, index){
-    const ts  = new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,14);
-    const idx = String(index).padStart(2,'0');
-    return `PSV_${order || 'UNKNOWN'}_${ts}_${idx}.jpg`;
+    review.style.display = "none";
+    captureStage.style.display = "block";
+    captureBar.style.display = "flex";
+
+    if(mode === "impression"){
+      modalTitle.textContent = `${side} Impression`;
+      modalHint.textContent = "Line up the tray handle and capture a clear photo.";
+      overlay.style.display = "block";
+      applyOverlayScale();
+    } else {
+      modalTitle.textContent = "Teeth Photo";
+      modalHint.textContent = "Use the front camera if available. Capture a clear photo.";
+      overlay.style.display = "none";
+    }
+
+    backdrop.style.display = "flex";
+    startCam(mode);
   }
 
-  async function createUploadSession(order, filename){
-    const u = new URL(FUNCTION_URL);
-    u.searchParams.set("order", order);
-    u.searchParams.set("filename", filename);
-    const r = await fetch(u.toString(), { method: "POST" });
-    const j = await r.json().catch(()=>({}));
-    if (!r.ok || !j.uploadUrl) throw new Error(`Create session failed (${r.status})`);
-    return j.uploadUrl;
+  function closeModal(){
+    backdrop.style.display = "none";
+    if(video.srcObject){ video.srcObject.getTracks().forEach(t=>t.stop()); }
+    stream = null;
+    photoBlob = null;
   }
 
-  async function uploadWhole(uploadUrl, blob){
-    const r = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Range": `bytes 0-${blob.size-1}/${blob.size}` },
-      body: blob
-    });
-    if (!(r.ok || r.status === 201)) throw new Error(`PUT failed ${r.status}`);
-    return true;
-  }
-
-  // ==== CAMERA ==============================================================
-  async function startCam(){
+  async function startCam(mode){
     try{
-      const base = { facingMode: { exact: "environment" } };
-      const constraints = { video: base, audio:false };
-      stream = await navigator.mediaDevices.getUserMedia(constraints).catch(async () =>
-        await navigator.mediaDevices.getUserMedia({ video:true, audio:false })
-      );
+      // Teeth: prefer front camera
+      const constraints = mode === "teeth"
+        ? { video: { facingMode: "user" }, audio:false }
+        : { video: { facingMode: { exact:"environment" } }, audio:false };
+
+      stream = await navigator.mediaDevices.getUserMedia(constraints).catch(async ()=>{
+        return navigator.mediaDevices.getUserMedia({ video:true, audio:false });
+      });
+
       video.srcObject = stream;
 
+      // Torch (mostly Android). No torch on iOS.
       const track = stream.getVideoTracks()[0];
-      if (!track) return;
-      const caps = track.getCapabilities ? track.getCapabilities() : {};
-      if (caps.torch) {
-        try {
-          await track.applyConstraints({ advanced:[{ torch: true }] });
-          torchMode = 'on';
-          flashBtn.textContent = 'Flash: On';
-        } catch { torchMode = 'off'; flashBtn.textContent = 'Flash: Off'; }
+      const caps = track?.getCapabilities ? track.getCapabilities() : {};
+      if(caps.torch){
+        torchMode = "off";
+        $("flash").textContent = "Flash: Off";
       } else {
-        flashBtn.textContent = 'Flash: Auto';
+        $("flash").textContent = "Flash";
       }
     } catch(e){
-      alert('Camera error: ' + e.message);
+      alert("Camera error: " + e.message);
+      closeModal();
     }
   }
 
-  openBtn.addEventListener('click', async ()=>{
-    const f = document.getElementById('f');
-    if(!f.reportValidity()) return;
-    const fd = new FormData(f);
-    meta = { order: sanitizeOrder(fd.get('order')), email: (fd.get('email')||'').toString().trim() };
-    backdrop.style.display = 'flex';
-    applyOverlayScale();
-    await startCam();
-    showCapture();
-  });
+  $("close").addEventListener("click", closeModal);
 
-  closeBtn.addEventListener('click', ()=> hideModal());
-
-  function showCapture(){
-    review.style.display='none';
-    captureStage.style.display='block';
-    captureBar.style.display='flex';
-  }
-  function showReview(){
-    captureStage.style.display='none';
-    captureBar.style.display='none';
-    review.style.display='block';
-    // scroll the confirm buttons into view
-    document.querySelector('.bar:last-of-type')?.scrollIntoView({ block:'end', behavior:'smooth' });
-  }
-  function hideModal(){
-    backdrop.style.display='none';
-    if(video.srcObject){ video.srcObject.getTracks().forEach(t=>t.stop()); }
-    photoBlob=null;
-  }
-
-  flashBtn.addEventListener('click', async ()=>{
+  $("flash").addEventListener("click", async ()=>{
     if(!stream) return;
     const track = stream.getVideoTracks()[0];
-    if(!track || !track.getCapabilities) return;
+    if(!track?.getCapabilities) return;
     const caps = track.getCapabilities();
-    if(!caps.torch) { alert('Flash control not supported on this device'); return; }
+    if(!caps.torch){ alert("Flash control not supported on this device"); return; }
     try{
-      const turnOn = torchMode !== 'on';
+      const turnOn = torchMode !== "on";
       await track.applyConstraints({ advanced:[{ torch: turnOn }] });
-      torchMode = turnOn ? 'on' : 'off';
-      flashBtn.textContent = 'Flash: ' + (turnOn ? 'On' : 'Off');
-    }catch(e){ alert('Flash error: '+e.message); }
+      torchMode = turnOn ? "on" : "off";
+      $("flash").textContent = "Flash: " + (turnOn ? "On" : "Off");
+    } catch(e){
+      alert("Flash error: " + e.message);
+    }
   });
 
-  snapBtn.addEventListener('click', ()=>{
+  $("snap").addEventListener("click", ()=>{
     if(!video.videoWidth) return;
-    const maxW = 2400;
-    const scale = Math.min(1, maxW / video.videoWidth);
-    canvas.width  = Math.round(video.videoWidth  * scale);
+
+    const scale = Math.min(1, MAX_W / video.videoWidth);
+    canvas.width = Math.round(video.videoWidth * scale);
     canvas.height = Math.round(video.videoHeight * scale);
-    const ctx = canvas.getContext('2d');
+
+    const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob(b => {
+
+    canvas.toBlob(b=>{
       photoBlob = b;
       reviewImg.src = URL.createObjectURL(b);
-      showReview();
-    }, 'image/jpeg', 0.9);
+
+      captureStage.style.display = "none";
+      captureBar.style.display = "none";
+      review.style.display = "block";
+      // scroll to confirm buttons
+      document.querySelector(".bar:last-of-type")?.scrollIntoView({ block:"end", behavior:"smooth" });
+    }, "image/jpeg", JPEG_QUALITY);
   });
 
-  retakeBtn.addEventListener('click', ()=>{
-    photoBlob=null;
-    showCapture();
+  $("retake").addEventListener("click", ()=>{
+    photoBlob = null;
+    review.style.display = "none";
+    captureStage.style.display = "block";
+    captureBar.style.display = "flex";
   });
 
-  // ==== NEW: upload to SharePoint via your Function ====
-  confirmBtn.addEventListener('click', async ()=>{
-  try{
-    if(!photoBlob) throw new Error('No photo captured');
-
-    const order = (meta?.order || 'UNKNOWN').toUpperCase();
-    const filename = buildFileName(order, fileIndex++); // PSV_<ORDER>_YYYYMMDDHHMMSS_01.jpg
-
-    // convert Blob -> base64 (chunked to avoid call stack issues)
-    async function blobToBase64(blob){
-      const ab = await blob.arrayBuffer();
-      let binary = '';
-      const bytes = new Uint8Array(ab);
-      const chunk = 0x8000;
-      for(let i=0;i<bytes.length;i+=chunk){
-        binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
-      }
-      return btoa(binary);
-    }
-    const fileB64 = await blobToBase64(photoBlob);
-
-    const r = await fetch(FUNCTION_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order, filename, fileB64, contentType: 'image/jpeg' })
-    });
-    const j = await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
-
-    hideModal();
-    const chip = document.createElement('div');
-    chip.className = 'chip';
-    chip.textContent = `✅ Uploaded as ${filename}`;
-    const x=document.createElement('span'); x.textContent=' ×'; x.className='x'; x.onclick=()=>chip.remove();
-    chip.appendChild(x); uploads.appendChild(chip);
-  }catch(err){
-    alert('Upload error: ' + err.message);
-    showCapture();
+  function addPhotoToList(blob, mode, side){
+    const id = crypto.randomUUID();
+    const url = URL.createObjectURL(blob);
+    state.photos.push({ id, mode, side, blob, previewUrl:url });
+    renderChips();
   }
-});
 
-  // Initial scale
-  applyOverlayScale();
+  $("confirm").addEventListener("click", ()=>{
+    if(!photoBlob) return;
+    const { mode, side } = state.capture;
+    addPhotoToList(photoBlob, mode, side);
+    closeModal();
+  });
+
+  function renderChips(){
+    impChips.innerHTML = "";
+    teethChips.innerHTML = "";
+
+    state.photos.forEach((p, idx)=>{
+      const chip = document.createElement("div");
+      chip.className = "chip";
+      const label =
+        p.mode === "teeth"
+          ? `Teeth ${String(idx+1).padStart(2,"0")}`
+          : `${p.side} Imp ${String(idx+1).padStart(2,"0")}`;
+
+      chip.textContent = label + " ";
+      const x = document.createElement("span");
+      x.className = "x";
+      x.textContent = "×";
+      x.onclick = ()=>{
+        URL.revokeObjectURL(p.previewUrl);
+        state.photos = state.photos.filter(pp=>pp.id!==p.id);
+        renderChips();
+      };
+      chip.appendChild(x);
+
+      if(p.mode === "teeth") teethChips.appendChild(chip);
+      else impChips.appendChild(chip);
+    });
+  }
+
+  $("addImpTop").addEventListener("click", ()=>{
+    const meta = requiredMeta();
+    if(!meta) return alert("Please fill in First name, Last name, and Email first.");
+    openModal({ mode:"impression", side:"Top" });
+  });
+
+  $("addImpBottom").addEventListener("click", ()=>{
+    const meta = requiredMeta();
+    if(!meta) return alert("Please fill in First name, Last name, and Email first.");
+    openModal({ mode:"impression", side:"Bottom" });
+  });
+
+  $("addTeeth").addEventListener("click", ()=>{
+    const meta = requiredMeta();
+    if(!meta) return alert("Please fill in First name, Last name, and Email first.");
+    openModal({ mode:"teeth", side:"Teeth" });
+  });
+
+  $("clearAll").addEventListener("click", ()=>{
+    state.photos.forEach(p=>URL.revokeObjectURL(p.previewUrl));
+    state.photos = [];
+    renderChips();
+    setStatus("", true);
+  });
+
+  async function blobToBase64(blob){
+    const ab = await blob.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(ab);
+    const chunk = 0x8000;
+    for(let i=0;i<bytes.length;i+=chunk){
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
+    }
+    return btoa(binary);
+  }
+
+  $("submitAll").addEventListener("click", async ()=>{
+    const meta = requiredMeta();
+    if(!meta) return alert("Please fill in First name, Last name, Email, Attempt #, and Product Type.");
+
+    const impCount = state.photos.filter(p=>p.mode==="impression").length;
+    if(impCount < 1) return alert("Please upload at least 1 impression photo.");
+
+    const warn = showWarningIfNeeded(meta);
+    if(warn){
+      const proceed = confirm(warn + "\n\nContinue?");
+      if(!proceed) return;
+    }
+
+    setStatus("Uploading… please keep this page open.", true);
+
+    try{
+      // Convert to payload files
+      const files = [];
+      for(const p of state.photos){
+        const fileB64 = await blobToBase64(p.blob);
+        files.push({
+          mode: p.mode,          // "impression" | "teeth"
+          side: p.side || "",    // "Top" | "Bottom" | "Teeth"
+          contentType: "image/jpeg",
+          fileB64
+        });
+      }
+
+      const payload = {
+        firstName: meta.firstName,
+        lastName: meta.lastName,
+        email: meta.email,
+        orderNumber: meta.orderNumber || "",
+        attemptNumber: meta.attemptNumber,
+        productType: meta.productType,
+        files
+      };
+
+      const r = await fetch(SUBMIT_URL, {
+        method: "POST",
+        headers: { "content-type":"application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+
+      setStatus("✅ Submitted successfully. You can close this page.", true);
+
+      // Optional: clear after success
+      // $("clearAll").click();
+
+    } catch(e){
+      setStatus("❌ Upload failed: " + e.message, false);
+      alert("Upload failed: " + e.message);
+    }
+  });
 </script>
 </body>
 </html>
