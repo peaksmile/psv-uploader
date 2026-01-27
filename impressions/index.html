@@ -108,7 +108,7 @@
           <label>Impression attempt # *</label>
           <select id="attemptNumber" required>
             <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
-            <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option>
+            <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8+</option>
           </select>
         </div>
         <div>
@@ -373,32 +373,49 @@
   });
 
   function renderChips(){
-    impChips.innerHTML = "";
-    teethChips.innerHTML = "";
+  impChips.innerHTML = "";
+  teethChips.innerHTML = "";
 
-    state.photos.forEach((p, idx)=>{
-      const chip = document.createElement("div");
-      chip.className = "chip";
-      const label =
-        p.mode === "teeth"
-          ? `Teeth ${String(idx+1).padStart(2,"0")}`
-          : `${p.side} Imp ${String(idx+1).padStart(2,"0")}`;
+  // per-bucket counters
+  let topN = 0, bottomN = 0, teethN = 0;
 
-      chip.textContent = label + " ";
-      const x = document.createElement("span");
-      x.className = "x";
-      x.textContent = "×";
-      x.onclick = ()=>{
-        URL.revokeObjectURL(p.previewUrl);
-        state.photos = state.photos.filter(pp=>pp.id!==p.id);
-        renderChips();
-      };
-      chip.appendChild(x);
+  state.photos.forEach((p)=>{
+    const chip = document.createElement("div");
+    chip.className = "chip";
 
-      if(p.mode === "teeth") teethChips.appendChild(chip);
-      else impChips.appendChild(chip);
-    });
-  }
+    const isTeeth = p.mode === "teeth";
+    const isBottom = !isTeeth && String(p.side||"").toLowerCase().includes("bottom");
+    const isTop = !isTeeth && !isBottom;
+
+    // increment correct bucket
+    let n = 0;
+    if(isTeeth) n = ++teethN;
+    else if(isBottom) n = ++bottomN;
+    else n = ++topN;
+
+    const idx = String(n).padStart(2,"0");
+
+    const label =
+      isTeeth
+        ? `Teeth ${idx}`
+        : `${isBottom ? "Bottom" : "Top"} Imp ${idx}`;
+
+    chip.textContent = label + " ";
+
+    const x = document.createElement("span");
+    x.className = "x";
+    x.textContent = "×";
+    x.onclick = ()=>{
+      URL.revokeObjectURL(p.previewUrl);
+      state.photos = state.photos.filter(pp=>pp.id!==p.id);
+      renderChips();
+    };
+    chip.appendChild(x);
+
+    if(isTeeth) teethChips.appendChild(chip);
+    else impChips.appendChild(chip);
+  });
+}
 
   $("addImpTop").addEventListener("click", ()=>{
     const meta = requiredMeta();
